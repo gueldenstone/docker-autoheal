@@ -8,6 +8,10 @@ DOCKER_SOCK=${DOCKER_SOCK:-/var/run/docker.sock}
 UNIX_SOCK=""
 CURL_TIMEOUT=${CURL_TIMEOUT:-30}
 WEBHOOK_URL=${WEBHOOK_URL:-""}
+MATRIX_URL=${MATRIX_URL:-""}
+MATRIX_USER=${MATRIX_USER:-""}
+MATRIX_PASS=${MATRIX_PASS:-""}
+MATRIX_ROOM=${MATRIX_ROOM:-""}
 
 # only use unix domain socket if no TCP endpoint is defined
 case "${DOCKER_SOCK}" in
@@ -64,6 +68,20 @@ notify_webhook() {
   then
     # execute webhook requests as background process to prevent healer from blocking
     curl -X POST -H "Content-type: application/json" -d "$(generate_webhook_payload $text)"  $WEBHOOK_URL
+  fi
+
+  if [ -n "$MATRIX_URL" ] && [ -n "$MATRIX_USER" ] && [ -n "$MATRIX_PASS" ] && [ -n "$MATRIX_ROOM" ]; then
+    echo "notify matrix"
+    LOGIN_RESP=$(curl -XPOST -s -d '{"type":"m.login.password", "user":"'$MATRIX_USER'", "password":"'$MATRIX_PASS'"}' "https://${MATRIX_URL}/_matrix/client/r0/login")
+    ERR=$(echo $LOGIN_RESP | jq -r .errcode)
+    if [ -n $ERR ]; then
+      TOKEN=$(echo $LOGIN_RESP | jq -r .access_token)
+      curl -XPOST -s -d \
+        '{"msgtype":"m.text", "body":"'"${text}"'"}' \
+        "https://${MATRIX_URL}/_matrix/client/r0/rooms/${MATRIX_ROOM}/send/m.room.message?access_token=${TOKEN}"
+    else
+      echo $ERR
+    fi
   fi
 }
 
